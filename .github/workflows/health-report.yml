@@ -1,0 +1,56 @@
+name: Daily Health Report
+on:
+  schedule:
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all products
+        run: |
+          echo "# BlackRoad OS — Daily Health Report" > report.md
+          echo "Date: $(date -u '+%Y-%m-%d %H:%M UTC')" >> report.md
+          echo "" >> report.md
+          echo "## Products" >> report.md
+          echo "| Product | Status | Size |" >> report.md
+          echo "|---------|--------|------|" >> report.md
+          
+          for url in \
+            "https://blackroad.io|Main Site" \
+            "https://tutor.blackroad.io|Homework Solver" \
+            "https://gateway.blackroad.io/health|AI Gateway" \
+            "https://search.blackroad.io|Search" \
+            "https://chat.blackroad.io|Chat" \
+            "https://ops.blackroad.io|Ops Dashboard" \
+            "https://amundson.blackroad.io|Amundson Calculator" \
+            "https://status.blackroad.io|Status" \
+            "https://app.blackroad.io|App" \
+            "https://social.blackroad.io|Social" \
+            "https://roadtrip.blackroad.io|RoadTrip"; do
+            
+            IFS='|' read -r u name <<< "$url"
+            code=$(curl -sL -o /dev/null -w "%{http_code}" --max-time 10 "$u" 2>/dev/null)
+            size=$(curl -sL --max-time 10 "$u" 2>/dev/null | wc -c)
+            status="UP"
+            [ "$code" != "200" ] && status="DOWN"
+            echo "| $name | $status ($code) | ${size}B |" >> report.md
+          done
+          
+          echo "" >> report.md
+          echo "## Tutor SEO" >> report.md
+          sitemap_count=$(curl -s https://tutor.blackroad.io/sitemap.xml 2>/dev/null | grep -c "<url>")
+          echo "Sitemap URLs: $sitemap_count" >> report.md
+          
+          cat report.md
+
+      - name: Create issue with report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --repo ${{ github.repository }} \
+            --title "Health Report — $(date -u '+%Y-%m-%d')" \
+            --body "$(cat report.md)" \
+            --label "health-report"
