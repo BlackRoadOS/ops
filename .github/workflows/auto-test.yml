@@ -1,0 +1,65 @@
+name: Auto Test — All Products
+on:
+  schedule:
+    - cron: '0 8,20 * * *'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: E2E Product Tests
+        id: tests
+        run: |
+          PASS=0
+          FAIL=0
+          FAILED=""
+          
+          for entry in \
+            "blackroad.io|200" \
+            "tutor.blackroad.io|200" \
+            "gateway.blackroad.io/health|200" \
+            "gateway.blackroad.io/ask|200" \
+            "search.blackroad.io|200" \
+            "chat.blackroad.io|200" \
+            "ops.blackroad.io|200" \
+            "status.blackroad.io|200" \
+            "app.blackroad.io|200" \
+            "social.blackroad.io|200" \
+            "roadtrip.blackroad.io|200" \
+            "amundson.blackroad.io|200" \
+            "pay.blackroad.io/health|200"; do
+            
+            url="${entry%%|*}"
+            expect="${entry##*|}"
+            code=$(curl -sL -o /dev/null -w "%{http_code}" --max-time 10 "https://$url" 2>/dev/null)
+            
+            if [ "$code" = "$expect" ]; then
+              echo "PASS $url"
+              PASS=$((PASS + 1))
+            else
+              echo "FAIL $url (got $code)"
+              FAIL=$((FAIL + 1))
+              FAILED="$FAILED\n- $url (HTTP $code)"
+            fi
+          done
+          
+          echo "pass=$PASS" >> $GITHUB_OUTPUT
+          echo "fail=$FAIL" >> $GITHUB_OUTPUT
+          echo "Results: $PASS passed, $FAIL failed"
+          
+          if [ $FAIL -gt 0 ]; then
+            echo "failed=$FAILED" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Create issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --repo ${{ github.repository }} \
+            --title "ALERT: Product test failures — $(date -u '+%Y-%m-%d %H:%M')" \
+            --body "E2E tests failed. Check the workflow run for details." \
+            --label "alert"
